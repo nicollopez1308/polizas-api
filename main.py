@@ -6,24 +6,24 @@ import hashlib
 import pickle
 from datetime import date
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from sqlalchemy import select
 
-import config
+from config import Settings, get_settings
 from database import Base, engine, sesion
 from esquemas import PolizaActualizacion, PolizaEntrada, PuntuacionEntrada, SiniestroEntrada
 from modelos import Poliza, Prediccion, Siniestro
 
 Base.metadata.create_all(engine)
 
-with open(config.RUTA_MODELO, "rb") as fh:
+with open(get_settings().ruta_modelo, "rb") as fh:
     modelo = pickle.load(fh)
 
 app = FastAPI(title="Pólizas API", version="0.1.0")
 
 
-def firmar(numero: str) -> str:
-    return hashlib.sha256(f"{numero}:{config.SECRETO_FIRMA}".encode()).hexdigest()
+def firmar(numero: str, secreto: str) -> str:
+    return hashlib.sha256(f"{numero}:{secreto}".encode()).hexdigest()
 
 
 def _siniestro(s: Siniestro) -> dict:
@@ -42,10 +42,10 @@ def _poliza(p: Poliza) -> dict:
 
 
 @app.post("/polizas")
-def crear_poliza(datos: PolizaEntrada):
+def crear_poliza(datos: PolizaEntrada, settings: Settings = Depends(get_settings)):
     poliza = Poliza(numero=datos.numero, asegurado=datos.asegurado, tipo=datos.tipo,
                     prima=datos.prima, fecha_inicio=datos.fecha_inicio, fecha_fin=datos.fecha_fin,
-                    token_firma=firmar(datos.numero))
+                    token_firma=firmar(datos.numero, settings.secreto_firma))
     for s in datos.siniestros:
         poliza.siniestros.append(Siniestro(
             fecha=date.fromisoformat(str(s.get("fecha", date.today()))),
@@ -108,7 +108,7 @@ def resumen():
 
 
 @app.post("/score")
-def puntuar(datos: PuntuacionEntrada):
+def puntuar(datos: PuntuacionEntrada, settings: Settings = Depends(get_settings)):
     poliza = sesion.scalar(select(Poliza).where(Poliza.numero == datos.numero))
     if poliza is None:
         return {"error": f"no existe la póliza {datos.numero}"}
@@ -116,7 +116,7 @@ def puntuar(datos: PuntuacionEntrada):
                (date.today() - poliza.fecha_inicio).days]]
     puntaje = float(modelo.predict_proba(rasgos)[0][1])
     prediccion = Prediccion(poliza_id=poliza.id, puntaje=puntaje,
-                            alto_riesgo=puntaje > config.UMBRAL_ALTO_RIESGO)
+                            alto_riesgo=puntaje > settings.umbral_alto_riesgo)
     sesion.add(prediccion)
     sesion.commit()
     return {"numero": poliza.numero, "puntaje": round(puntaje, 4),
