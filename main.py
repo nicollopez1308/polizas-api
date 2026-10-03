@@ -7,7 +7,8 @@ import pickle
 from datetime import date
 
 from fastapi import Depends, FastAPI
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from config import Settings, get_settings
@@ -21,6 +22,18 @@ with open(get_settings().ruta_modelo, "rb") as fh:
     modelo = pickle.load(fh)
 
 app = FastAPI(title="Pólizas API", version="0.1.0")
+
+
+
+@app.get("/health")
+def salud(db: Session = Depends(get_db)):
+    """Sonda de salud: el servicio responde y dice si la base de datos contesta."""
+    try:
+        db.execute(text("SELECT 1"))
+        base_de_datos = "ok"
+    except SQLAlchemyError:
+        base_de_datos = "sin conexión"
+    return {"estado": "ok", "base_de_datos": base_de_datos}
 
 
 def firmar(numero: str, secreto: str) -> str:
