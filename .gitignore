@@ -1,1 +1,15 @@
+# Python
+__pycache__/
 *.pyc
+
+# Entorno virtual
+.venv/
+
+# Secretos: el .env real nunca se sube
+.env
+
+# Bases de datos locales
+*.db
+
+# Caché de pytest
+.pytest_cache/
