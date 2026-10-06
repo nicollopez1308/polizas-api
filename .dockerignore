@@ -1,0 +1,17 @@
+# Control de versiones y entornos locales
+.git
+.venv
+venv
+
+# Cachés de Python
+__pycache__/
+**/__pycache__
+.pytest_cache
+
+# Secretos y bases de datos locales: nunca dentro de la imagen
+.env
+*.db
+
+# Lo que no hace falta para correr el servicio
+tests/
+plantillas/
