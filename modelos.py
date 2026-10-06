@@ -1,6 +1,6 @@
 """Tablas del servicio."""
 from datetime import date, datetime
-from typing import Optional
+
 
 from sqlalchemy import Date, DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -13,8 +13,7 @@ class Poliza(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     numero: Mapped[str] = mapped_column(String(20), unique=True)
-    # Pasa a obligatorio cuando el validador de esquemas.py devuelva el valor (B7).
-    asegurado: Mapped[Optional[str]] = mapped_column(String(80))
+    asegurado: Mapped[str] = mapped_column(String(80))
     tipo: Mapped[str] = mapped_column(String(10))
     prima: Mapped[float] = mapped_column(Float)
     fecha_inicio: Mapped[date] = mapped_column(Date)

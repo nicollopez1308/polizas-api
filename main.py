@@ -12,11 +12,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from config import Settings, get_settings
-from database import Base, engine, get_db
+from database import get_db
 from esquemas import PolizaActualizacion, PolizaEntrada, PuntuacionEntrada, SiniestroEntrada
 from modelos import Poliza, Prediccion, Siniestro
 
-Base.metadata.create_all(engine)
 
 with open(get_settings().ruta_modelo, "rb") as fh:
     modelo = pickle.load(fh)
