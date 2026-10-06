@@ -1,8 +1,8 @@
 """Esquemas de entrada."""
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def _normalizar_nombre(v: str) -> str:
@@ -54,3 +54,65 @@ class PolizaActualizacion(BaseModel):
 
 class PuntuacionEntrada(BaseModel):
     numero: str = Field(min_length=8, max_length=20)
+    
+
+# ---------------------------------------------------------------------------
+# Esquemas de salida: deciden qué campos salen de la API. Lo que no esté aquí
+# (por ejemplo token_firma) no se responde nunca. from_attributes=True permite
+# construirlos directamente desde los objetos de SQLAlchemy.
+# ---------------------------------------------------------------------------
+
+class SiniestroSalida(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    fecha: date
+    monto: float
+    descripcion: str
+    estado: str
+
+
+class SiniestroDetalle(SiniestroSalida):
+    poliza_id: int
+    numero_poliza: str
+
+
+class PolizaSalida(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    numero: str
+    asegurado: str
+    tipo: str
+    prima: float
+    fecha_inicio: date
+    fecha_fin: date
+    siniestros: list[SiniestroSalida]
+
+
+class ResumenSalida(BaseModel):
+    numero: str
+    n_siniestros: int
+    monto_total: float
+
+
+class PuntuacionSalida(BaseModel):
+    numero: str
+    puntaje: float
+    alto_riesgo: bool
+
+
+class PrediccionSalida(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    poliza_id: int
+    numero: str
+    puntaje: float
+    alto_riesgo: bool
+    creado_en: datetime
+
+
+class SaludSalida(BaseModel):
+    estado: str
+    base_de_datos: str

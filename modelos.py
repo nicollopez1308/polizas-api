@@ -1,7 +1,6 @@
 """Tablas del servicio."""
 from datetime import date, datetime
 
-
 from sqlalchemy import Date, DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -38,6 +37,11 @@ class Siniestro(Base):
 
     poliza: Mapped["Poliza"] = relationship(back_populates="siniestros")
 
+    @property
+    def numero_poliza(self) -> str:
+        """Número de la póliza a la que pertenece (para las respuestas)."""
+        return self.poliza.numero
+
 
 class Prediccion(Base):
     __tablename__ = "predicciones"
@@ -49,3 +53,8 @@ class Prediccion(Base):
     creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     poliza: Mapped["Poliza"] = relationship(back_populates="predicciones")
+
+    @property
+    def numero(self) -> str:
+        """Número de la póliza puntuada (para las respuestas)."""
+        return self.poliza.numero
