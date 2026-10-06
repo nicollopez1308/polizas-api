@@ -1,30 +1,42 @@
 """
-polizas-api-v0 — Gestión de pólizas y siniestros.
-Aseguradora Santo Tomás · prototipo interno.
+Pólizas API — Gestión de pólizas y siniestros.
+Aseguradora Santo Tomás.
 """
 import hashlib
 import pickle
 from datetime import date
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import select, text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from config import Settings, get_settings
 from database import get_db
-from esquemas import PolizaActualizacion, PolizaEntrada, PuntuacionEntrada, SiniestroEntrada
+from esquemas import (PolizaActualizacion, PolizaEntrada, PolizaSalida, PrediccionSalida,
+                      PuntuacionEntrada, PuntuacionSalida, ResumenSalida, SaludSalida,
+                      SiniestroDetalle, SiniestroEntrada, SiniestroSalida)
 from modelos import Poliza, Prediccion, Siniestro
-
 
 with open(get_settings().ruta_modelo, "rb") as fh:
     modelo = pickle.load(fh)
 
-app = FastAPI(title="Pólizas API", version="0.1.0")
+app = FastAPI(title="Pólizas API", version="1.0.0")
 
 
+def firmar(numero: str, secreto: str) -> str:
+    return hashlib.sha256(f"{numero}:{secreto}".encode()).hexdigest()
 
-@app.get("/health")
+
+def _buscar_poliza(db: Session, id_poliza: int) -> Poliza:
+    """Devuelve la póliza o responde 404 si no existe."""
+    poliza = db.get(Poliza, id_poliza)
+    if poliza is None:
+        raise HTTPException(status_code=404, detail=f"no existe la póliza {id_poliza}")
+    return poliza
+
+
+@app.get("/health", response_model=SaludSalida)
 def salud(db: Session = Depends(get_db)):
     """Sonda de salud: el servicio responde y dice si la base de datos contesta."""
     try:
@@ -35,84 +47,63 @@ def salud(db: Session = Depends(get_db)):
     return {"estado": "ok", "base_de_datos": base_de_datos}
 
 
-def firmar(numero: str, secreto: str) -> str:
-    return hashlib.sha256(f"{numero}:{secreto}".encode()).hexdigest()
-
-
-def _siniestro(s: Siniestro) -> dict:
-    return {"id": s.id, "poliza_id": s.poliza_id, "numero_poliza": s.poliza.numero,
-            "fecha": s.fecha, "monto": s.monto, "descripcion": s.descripcion, "estado": s.estado}
-
-
-def _poliza(p: Poliza) -> dict:
-    return {
-        "id": p.id, "numero": p.numero, "asegurado": p.asegurado, "tipo": p.tipo,
-        "prima": p.prima, "fecha_inicio": p.fecha_inicio, "fecha_fin": p.fecha_fin,
-        "token_firma": p.token_firma,
-        "siniestros": [{"id": s.id, "fecha": s.fecha, "monto": s.monto,
-                        "descripcion": s.descripcion, "estado": s.estado} for s in p.siniestros],
-    }
-
-
-@app.post("/polizas")
+@app.post("/polizas", response_model=PolizaSalida, status_code=201)
 def crear_poliza(datos: PolizaEntrada, db: Session = Depends(get_db),
                  settings: Settings = Depends(get_settings)):
-    poliza = Poliza(numero=datos.numero, asegurado=datos.asegurado, tipo=datos.tipo,
-                    prima=datos.prima, fecha_inicio=datos.fecha_inicio, fecha_fin=datos.fecha_fin,
+    poliza = Poliza(**datos.model_dump(exclude={"siniestros"}),
                     token_firma=firmar(datos.numero, settings.secreto_firma))
-    for s in datos.siniestros:
-        poliza.siniestros.append(Siniestro(
-            fecha=date.fromisoformat(str(s.get("fecha", date.today()))),
-            monto=s.get("monto", 0), descripcion=s.get("descripcion", ""),
-            estado=s.get("estado", "abierto")))
+    poliza.siniestros = [Siniestro(**s.model_dump()) for s in datos.siniestros]
     db.add(poliza)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"ya existe la póliza {datos.numero}")
+    db.refresh(poliza)
+    return poliza
+
+
+@app.get("/polizas", response_model=list[PolizaSalida])
+def listar_polizas(db: Session = Depends(get_db)):
+    return db.scalars(select(Poliza).order_by(Poliza.id)).all()
+
+
+@app.get("/polizas/{id_poliza}", response_model=PolizaSalida)
+def obtener_poliza(id_poliza: int, db: Session = Depends(get_db)):
+    return _buscar_poliza(db, id_poliza)
+
+
+@app.put("/polizas/{id_poliza}", response_model=PolizaSalida)
+def actualizar_poliza(id_poliza: int, datos: PolizaActualizacion, db: Session = Depends(get_db)):
+    poliza = _buscar_poliza(db, id_poliza)
+    # Solo los campos que el cliente envió (y que no vienen en null).
+    cambios = datos.model_dump(exclude_unset=True, exclude_none=True)
+    for campo, valor in cambios.items():
+        setattr(poliza, campo, valor)
+    if poliza.fecha_fin <= poliza.fecha_inicio:
+        db.rollback()
+        raise HTTPException(status_code=422, detail="fecha_fin debe ser posterior a fecha_inicio")
     db.commit()
     db.refresh(poliza)
     return poliza
 
 
-@app.get("/polizas")
-def listar_polizas(db: Session = Depends(get_db)):
-    return [_poliza(p) for p in db.scalars(select(Poliza).order_by(Poliza.id))]
-
-
-@app.get("/polizas/{id_poliza}")
-def obtener_poliza(id_poliza: int, db: Session = Depends(get_db)):
-    poliza = db.get(Poliza, id_poliza)
-    if poliza is None:
-        return {"error": f"no existe la póliza {id_poliza}"}
-    return _poliza(poliza)
-
-
-@app.put("/polizas/{id_poliza}")
-def actualizar_poliza(id_poliza: int, datos: PolizaActualizacion, db: Session = Depends(get_db)):
-    poliza = db.get(Poliza, id_poliza)
-    if poliza is None:
-        return {"error": f"no existe la póliza {id_poliza}"}
-    for campo, valor in datos.model_dump().items():
-        setattr(poliza, campo, valor)
-    db.commit()
-    db.refresh(poliza)
-    return _poliza(poliza)
-
-
-@app.post("/polizas/{id_poliza}/siniestros")
+@app.post("/polizas/{id_poliza}/siniestros", response_model=SiniestroSalida, status_code=201)
 def declarar_siniestro(id_poliza: int, datos: SiniestroEntrada, db: Session = Depends(get_db)):
-    siniestro = Siniestro(poliza_id=id_poliza, fecha=datos.fecha, monto=datos.monto,
-                          descripcion=datos.descripcion, estado=datos.estado)
+    poliza = _buscar_poliza(db, id_poliza)
+    siniestro = Siniestro(**datos.model_dump(), poliza=poliza)
     db.add(siniestro)
     db.commit()
     db.refresh(siniestro)
-    return {"id": siniestro.id, "poliza_id": siniestro.poliza_id, "fecha": siniestro.fecha,
-            "monto": siniestro.monto, "descripcion": siniestro.descripcion, "estado": siniestro.estado}
+    return siniestro
 
 
-@app.get("/siniestros")
+@app.get("/siniestros", response_model=list[SiniestroDetalle])
 def listar_siniestros(db: Session = Depends(get_db)):
-    return [_siniestro(s) for s in db.scalars(select(Siniestro).order_by(Siniestro.id))]
+    return db.scalars(select(Siniestro).order_by(Siniestro.id)).all()
 
 
-@app.get("/resumen")
+@app.get("/resumen", response_model=list[ResumenSalida])
 def resumen(db: Session = Depends(get_db)):
     filas = []
     for p in db.scalars(select(Poliza).order_by(Poliza.id)):
@@ -121,12 +112,12 @@ def resumen(db: Session = Depends(get_db)):
     return filas
 
 
-@app.post("/score")
+@app.post("/score", response_model=PuntuacionSalida)
 def puntuar(datos: PuntuacionEntrada, db: Session = Depends(get_db),
             settings: Settings = Depends(get_settings)):
     poliza = db.scalar(select(Poliza).where(Poliza.numero == datos.numero))
     if poliza is None:
-        return {"error": f"no existe la póliza {datos.numero}"}
+        raise HTTPException(status_code=404, detail=f"no existe la póliza {datos.numero}")
     rasgos = [[poliza.prima, len(poliza.siniestros), sum(s.monto for s in poliza.siniestros),
                (date.today() - poliza.fecha_inicio).days]]
     puntaje = float(modelo.predict_proba(rasgos)[0][1])
@@ -138,13 +129,6 @@ def puntuar(datos: PuntuacionEntrada, db: Session = Depends(get_db),
             "alto_riesgo": prediccion.alto_riesgo}
 
 
-@app.get("/predicciones")
+@app.get("/predicciones", response_model=list[PrediccionSalida])
 def listar_predicciones(db: Session = Depends(get_db)):
-    return [{"id": pr.id, "poliza_id": pr.poliza_id, "puntaje": pr.puntaje,
-             "alto_riesgo": pr.alto_riesgo, "creado_en": pr.creado_en}
-            for pr in db.scalars(select(Prediccion).order_by(Prediccion.id))]
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    return db.scalars(select(Prediccion).order_by(Prediccion.id)).all()
