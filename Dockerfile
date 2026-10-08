@@ -18,6 +18,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
+# Valores de EJEMPLO, los mismos de .env.example, para que `docker run -p 8000:8000 polizas-api`
+# arranque sin más. No son secretos: en un despliegue real se pasan los verdaderos al arrancar
+# con `--env-file .env` (o `-e`), que tienen prioridad sobre estos. El .env real nunca entra en
+# la imagen: lo excluye .dockerignore.
+ENV DATABASE_URL=sqlite:///app.db \
+    SECRETO_FIRMA=cambiar-por-un-secreto-largo-y-aleatorio \
+    CLAVE_API_REASEGURO=cambiar-por-la-clave-del-reasegurador \
+    RUTA_MODELO=modelo.pkl \
+    UMBRAL_ALTO_RIESGO=0.6
+
 # Usuario sin privilegios para correr el servicio.
 RUN useradd --create-home --uid 1000 aplicacion
 
