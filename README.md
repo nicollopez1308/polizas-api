@@ -117,7 +117,7 @@ Reglas para todos los comandos de este documento:
 |---|---|---|
 | **Git** | Descargar el proyecto. En Windows incluye **Git Bash**, una terminal útil para algunos ejemplos. | Descargar desde [git-scm.com](https://git-scm.com/downloads) e instalar con las opciones predeterminadas. |
 | **Python 3.11 o 3.12** | Ejecutar el servicio en el computador (sección 5). | Descargar desde [python.org/downloads](https://www.python.org/downloads/). **En Windows, marque la casilla "Add python.exe to PATH"** en la primera pantalla del instalador, antes de pulsar *Install Now*. |
-| **Docker Desktop** *(opcional)* | Ejecutar el servicio en un contenedor (sección 6). | Ver [4.4](#44-instalación-de-docker-desktop-opcional). |
+| **Docker Desktop** *(opcional)* | Ejecutar el servicio en un contenedor (sección 6). | Se explica en la [sección 4.4, «Instalación de Docker Desktop»](#44-instalación-de-docker-desktop-opcional). |
 | **Navegador web** | Usar la página de pruebas del servicio. | Cualquiera: Chrome, Edge, Firefox o Safari. |
 
 ### 4.3 Verificación de la instalación
@@ -266,8 +266,8 @@ Continúe en la [sección 7](#7-uso-del-servicio) para usar el servicio.
 
 ## 6. Ejecución con Docker
 
-Requiere Docker Desktop abierto y en estado **"Engine running"** (ver
-[4.4](#44-instalación-de-docker-desktop-opcional)), y el proyecto descargado (pasos 1 y 2 de la
+Requiere Docker Desktop abierto y en estado **"Engine running"** (ver la
+[sección 4.4, «Instalación de Docker Desktop»](#44-instalación-de-docker-desktop-opcional)), y el proyecto descargado (pasos 1 y 2 de la
 sección 5). Los comandos se ejecutan dentro de la carpeta `polizas-api`. No es necesario crear
 el entorno virtual ni instalar las librerías: el contenedor las trae.
 
