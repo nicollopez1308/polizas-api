@@ -23,12 +23,42 @@
 
 # Parte C — Interpretación de las consultas
 
-> Un párrafo por endpoint. (Se completa en la Parte C.)
+Medimos primero el código sin estrategias explícitas (todo `lazy`, la carga por defecto de SQLAlchemy) y obtuvimos 11 / 2 / 11 / 11 consultas con 10 pólizas y 2001 / 2 / 2001 / 2001 con 2000 pólizas para `/polizas`, `/polizas/{id}`, `/siniestros` y `/resumen`. Tres endpoints tenían el problema N+1: una consulta para la lista y otra por cada póliza. Decidimos la estrategia de cada endpoint después de medir, y también medimos las alternativas descartadas. Las estrategias quedaron en `main.py` y los números finales están en `CONSULTAS.csv`.
+
+**Modificación de `contar_consultas.py`:** se añadió el diccionario `ESTRATEGIAS` con la estrategia que quedó en `main.py` para cada endpoint, y el script lo escribe en la columna `estrategia` del CSV. El conteo de consultas no se modificó.
 
 ## `/polizas`
 
+**Estrategia: `selectinload`. Consultas: 2 con 10 pólizas, 5 con 2000.** Con `lazy` eran 1 + N (11 y 2001): una consulta para las pólizas y una más cada vez que se leían los siniestros de una póliza. Con `selectinload` hay una consulta para las pólizas y otra que trae los siniestros de todas a la vez con `WHERE poliza_id IN (...)`. Con 10 pólizas eso da 2. Con 2000 da 5 porque SQLAlchemy parte la lista del `IN` en bloques de 500 identificadores: 1 consulta de pólizas + 2000 / 500 = 4 consultas de siniestros. El número ya no crece una consulta por póliza. Descartamos `joinedload` aunque hace una sola consulta: como una póliza tiene varios siniestros (uno-a-muchos), el `JOIN` repite los datos de cada póliza una vez por siniestro, y en nuestra medición con 2000 pólizas fue más lento (230 ms contra 180 ms de `selectinload`). Este es el caso en que «cargar todo de una vez» da peor rendimiento.
+
 ## `/polizas/{id}`
+
+**Estrategia: `lazy`. Consultas: 2 con 10 pólizas, 2 con 2000.** Este endpoint devuelve una sola póliza: una consulta la busca por su id y una segunda trae sus siniestros cuando se arma la respuesta. El número no depende de cuántas pólizas haya en la base, por eso es 2 en ambos tamaños; no hay N+1 que corregir. Lo dejamos en `lazy` aunque la regla «cargar todo de una vez» pediría `joinedload`: lo medimos, y `joinedload` baja a 1 consulta, pero también constante, así que no cambia cómo escala el endpoint. Es el caso en que el código no sigue la regla y la medición dice que da igual.
 
 ## `/siniestros`
 
+**Estrategia: `joinedload`. Consultas: 1 con 10 pólizas, 1 con 2000.** Con `lazy` eran 1 + N (11 y 2001) porque cada siniestro buscaba aparte su póliza para obtener `numero_poliza`. Aquí la relación es muchos-a-uno: cada siniestro tiene exactamente una póliza, así que el `JOIN` trae cada siniestro con su póliza en la misma fila sin repetir filas. Por eso basta una sola consulta, y no cambia entre 10 y 2000.
+
 ## `/resumen`
+
+# Parte C — Interpretación de las consultas
+
+Medimos primero el código sin estrategias explícitas (todo `lazy`, la carga por defecto de SQLAlchemy) y obtuvimos 11 / 2 / 11 / 11 consultas con 10 pólizas y 2001 / 2 / 2001 / 2001 con 2000 pólizas para `/polizas`, `/polizas/{id}`, `/siniestros` y `/resumen`. Tres endpoints tenían el problema N+1: una consulta para la lista y otra por cada póliza. Decidimos la estrategia de cada endpoint después de medir, y también medimos las alternativas descartadas. Las estrategias quedaron en `main.py` y los números finales están en `CONSULTAS.csv`.
+
+**Modificación de `contar_consultas.py`:** se añadió el diccionario `ESTRATEGIAS` con la estrategia que quedó en `main.py` para cada endpoint, y el script lo escribe en la columna `estrategia` del CSV. El conteo de consultas no se modificó.
+
+## `/polizas`
+
+**Estrategia: `selectinload`. Consultas: 2 con 10 pólizas, 5 con 2000.** Con `lazy` eran 1 + N (11 y 2001): una consulta para las pólizas y una más cada vez que se leían los siniestros de una póliza. Con `selectinload` hay una consulta para las pólizas y otra que trae los siniestros de todas a la vez con `WHERE poliza_id IN (...)`. Con 10 pólizas eso da 2. Con 2000 da 5 porque SQLAlchemy parte la lista del `IN` en bloques de 500 identificadores: 1 consulta de pólizas + 2000 / 500 = 4 consultas de siniestros. El número ya no crece una consulta por póliza. Descartamos `joinedload` aunque hace una sola consulta: como una póliza tiene varios siniestros (uno-a-muchos), el `JOIN` repite los datos de cada póliza una vez por siniestro, y en nuestra medición con 2000 pólizas fue más lento (230 ms contra 180 ms de `selectinload`). Este es el caso en que «cargar todo de una vez» da peor rendimiento.
+
+## `/polizas/{id}`
+
+**Estrategia: `lazy`. Consultas: 2 con 10 pólizas, 2 con 2000.** Este endpoint devuelve una sola póliza: una consulta la busca por su id y una segunda trae sus siniestros cuando se arma la respuesta. El número no depende de cuántas pólizas haya en la base, por eso es 2 en ambos tamaños; no hay N+1 que corregir. Lo dejamos en `lazy` aunque la regla «cargar todo de una vez» pediría `joinedload`: lo medimos, y `joinedload` baja a 1 consulta, pero también constante, así que no cambia cómo escala el endpoint. Es el caso en que el código no sigue la regla y la medición dice que da igual.
+
+## `/siniestros`
+
+**Estrategia: `joinedload`. Consultas: 1 con 10 pólizas, 1 con 2000.** Con `lazy` eran 1 + N (11 y 2001) porque cada siniestro buscaba aparte su póliza para obtener `numero_poliza`. Aquí la relación es muchos-a-uno: cada siniestro tiene exactamente una póliza, así que el `JOIN` trae cada siniestro con su póliza en la misma fila sin repetir filas. Por eso basta una sola consulta, y no cambia entre 10 y 2000.
+
+## `/resumen`
+
+**Estrategia: `agregada`. Consultas: 1 con 10 pólizas, 1 con 2000.** El resumen solo necesita contar y sumar los siniestros de cada póliza, no los siniestros en sí. Con `lazy` se traían todos los siniestros a Python póliza por póliza (11 y 2001 consultas). Ahora la base de datos hace el cálculo con `COUNT`, `SUM` y `GROUP BY` en una sola consulta, y devuelve una fila por póliza. Usamos `outerjoin` (LEFT JOIN) y `coalesce` para que una póliza sin siniestros aparezca con 0 en vez de desaparecer. Descartamos `selectinload`: también corrige el N+1 (5 consultas con 2000 pólizas), pero trae los 6000 siniestros a memoria solo para sumarlos, y medimos 166 ms contra 15 ms de la consulta agregada.

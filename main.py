@@ -7,9 +7,9 @@ import pickle
 from datetime import date
 
 from fastapi import Depends, FastAPI, HTTPException
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from config import Settings, get_settings
 from database import get_db
@@ -65,11 +65,15 @@ def crear_poliza(datos: PolizaEntrada, db: Session = Depends(get_db),
 
 @app.get("/polizas", response_model=list[PolizaSalida])
 def listar_polizas(db: Session = Depends(get_db)):
-    return db.scalars(select(Poliza).order_by(Poliza.id)).all()
+    # selectinload: 1 consulta para las pólizas + 1 para TODOS sus siniestros (WHERE poliza_id IN ...).
+    consulta = select(Poliza).options(selectinload(Poliza.siniestros)).order_by(Poliza.id)
+    return db.scalars(consulta).all()
 
 
 @app.get("/polizas/{id_poliza}", response_model=PolizaSalida)
 def obtener_poliza(id_poliza: int, db: Session = Depends(get_db)):
+    # lazy a propósito: es UNA póliza, así que sus siniestros cuestan 1 consulta más,
+    # tenga la base 10 pólizas o 2000. Cargarlos por adelantado no ahorra nada medible.
     return _buscar_poliza(db, id_poliza)
 
 
@@ -100,16 +104,25 @@ def declarar_siniestro(id_poliza: int, datos: SiniestroEntrada, db: Session = De
 
 @app.get("/siniestros", response_model=list[SiniestroDetalle])
 def listar_siniestros(db: Session = Depends(get_db)):
-    return db.scalars(select(Siniestro).order_by(Siniestro.id)).all()
+    # joinedload: cada siniestro trae su póliza en la MISMA consulta (JOIN). Es una relación
+    # muchos-a-uno, así que el JOIN no repite filas.
+    consulta = select(Siniestro).options(joinedload(Siniestro.poliza)).order_by(Siniestro.id)
+    return db.scalars(consulta).all()
 
 
 @app.get("/resumen", response_model=list[ResumenSalida])
 def resumen(db: Session = Depends(get_db)):
-    filas = []
-    for p in db.scalars(select(Poliza).order_by(Poliza.id)):
-        filas.append({"numero": p.numero, "n_siniestros": len(p.siniestros),
-                      "monto_total": round(sum(s.monto for s in p.siniestros), 2)})
-    return filas
+    # agregada: la base cuenta y suma con GROUP BY; no se trae ni un solo objeto Siniestro.
+    consulta = (
+        select(Poliza.numero,
+               func.count(Siniestro.id).label("n_siniestros"),
+               func.coalesce(func.sum(Siniestro.monto), 0).label("monto_total"))
+        .outerjoin(Siniestro)
+        .group_by(Poliza.id)
+        .order_by(Poliza.id)
+    )
+    return [{"numero": f.numero, "n_siniestros": f.n_siniestros,
+             "monto_total": round(f.monto_total, 2)} for f in db.execute(consulta)]
 
 
 @app.post("/score", response_model=PuntuacionSalida)
