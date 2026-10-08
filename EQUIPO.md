@@ -11,4 +11,4 @@
 | Nombre completo | Correo institucional | Identidades git |
 |-----------------|----------------------|-----------------|
 | Nicole López | nicolelopez@usantotomas.edu.co | Nicole López <nl12112004@gmail.com> |
-| Luna Pico | tucorreo@usantotomas.edu.co | Luna Pico <lunapico0408@gmail.com> |
+| Luna Pico | lunapico@usantotomas.edu.co | Luna Pico <lunapico0408@gmail.com> |
